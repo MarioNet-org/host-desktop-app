@@ -16,6 +16,10 @@ class HostService {
   async request(route, method = 'GET', body) {
     return this.auth.request(route, method, body, this.record ? { 'X-Node-Key': this.record.key } : {});
   }
+  async sendSignal(signal) {
+    if (!this.socket || this.socket.readyState !== 1) throw new Error('PEER_OFFLINE');
+    this.socket.send(JSON.stringify({ type: 'signal', ...signal }));
+  }
   async load() {
     const user = this.auth.state()?.user;
     if (!user) throw new Error('UNAUTHORIZED');
@@ -85,9 +89,11 @@ class HostService {
         const data = JSON.parse(event.data);
         if (data.type === 'ready') { clearTimeout(this.deadline); this.status = 'online'; }
         if (data.type === 'error') { this.stop(); this.status = 'error'; }
-        // Remote streaming/input is not implemented: never silently approve control.
+        if (data.type === 'signal') this.onSignal?.(data);
+        if (data.type === 'connection.updated') this.onConnection?.(data.connection);
+        // Monitoring is read-only. The registered Host automatically grants a display stream.
         if (data.type === 'connection.updated' && data.connection?.status === 'PENDING' && /^[a-f0-9-]{36}$/.test(data.connection.id)) {
-          void this.request(`/connections/${data.connection.id}/reject`, 'POST').catch(() => {});
+          void this.request(`/connections/${data.connection.id}/accept`, 'POST').catch(error => console.error('Host monitoring approval failed', error?.message || error));
         }
       } catch { socket.close(); }
     };

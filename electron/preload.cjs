@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('marioNet', {
   registerHost: () => ipcRenderer.invoke('host:register'),
   renameHost: name => ipcRenderer.invoke('host:rename', name),
   allowHost: allow => ipcRenderer.invoke('host:allow', allow),
+  setResolution: resolution => ipcRenderer.invoke('host:resolution', resolution),
   onExpired: (callback) => {
     const listener = () => callback();
     ipcRenderer.on('auth:expired', listener);

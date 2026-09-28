@@ -29,6 +29,7 @@ class HostService {
     try {
       this.record = JSON.parse(this.storage.decryptString(await fs.readFile(this.file)));
       if (!/^[a-f0-9-]{36}$/.test(this.record.id) || !/^[a-f0-9]{64}$/.test(this.record.key)) throw new Error('STORAGE_ERROR');
+      if (!['standard', 'original', 'saver', 'low'].includes(this.record.resolution)) this.record.resolution = 'standard';
     } catch (error) {
       if (error.code !== 'ENOENT') { this.userId = null; this.record = null; throw new Error('STORAGE_ERROR'); }
     }
@@ -39,7 +40,7 @@ class HostService {
     await fs.rename(this.file + '.tmp', this.file);
   }
   snapshot() {
-    return { name: this.record?.name || os.hostname(), nodeId: this.record?.id || null, allowed: this.allowed, status: this.status,
+    return { name: this.record?.name || os.hostname(), nodeId: this.record?.id || null, allowed: this.allowed, resolution: this.record?.resolution || 'standard', status: this.status,
       platform: os.platform(), addresses: [...new Set(Object.values(os.networkInterfaces()).flat().filter(n => n && !n.internal && n.family === 'IPv4').map(n => n.address))] };
   }
   async run(operation, input) {
@@ -53,7 +54,7 @@ class HostService {
         if (!platform) throw new Error('UNSUPPORTED_PLATFORM');
         const result = await this.request('/nodes', 'POST', { name: os.hostname().slice(0, 80), platform });
         if (!result.node?.id || !/^[a-f0-9]{64}$/.test(result.nodeKey)) throw new Error('INVALID_RESPONSE');
-        this.record = { id: result.node.id, name: result.node.name, key: result.nodeKey };
+        this.record = { id: result.node.id, name: result.node.name, key: result.nodeKey, resolution: 'standard' };
         try { await this.save(); }
         catch { try { await this.request(`/nodes/${this.record.id}`, 'DELETE'); } catch {} this.record = null; throw new Error('STORAGE_ERROR'); }
       } else if (operation === 'rename') {
@@ -66,6 +67,10 @@ class HostService {
         if (!this.record) throw new Error('NOT_REGISTERED');
         this.stop(); this.allowed = input;
         if (input) this.connect();
+      } else if (operation === 'resolution') {
+        if (!this.record) throw new Error('NOT_REGISTERED');
+        if (!['standard', 'original', 'saver', 'low'].includes(input)) throw new Error('INVALID_RESOLUTION');
+        this.record.resolution = input; await this.save(); this.onResolution?.(input);
       }
       return { ok: true, host: this.snapshot() };
     } catch (error) { return { ok: false, code: error.message }; }

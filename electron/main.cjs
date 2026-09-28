@@ -23,6 +23,7 @@ let exiting = false;
 let captureWindow;
 let captureReady;
 let resolveCaptureReady;
+const activeCaptures = new Map();
 
 function trusted(event) {
   return (
@@ -87,7 +88,7 @@ async function startCapture(connection) {
   const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } });
   if (!sources[0]) throw new Error('SCREEN_SOURCE_UNAVAILABLE');
   console.info('Host main capture source selected', sources[0].id);
-  if (captureWindow && !captureWindow.isDestroyed()) captureWindow.webContents.send('capture:start', { connection, sourceId: sources[0].id });
+  if (captureWindow && !captureWindow.isDestroyed()) captureWindow.webContents.send('capture:start', { connection, sourceId: sources[0].id, resolution: host.snapshot().resolution });
 }
 
 function stopCapture(connectionId) {
@@ -140,13 +141,19 @@ void app.whenReady().then(async () => {
     require("electron").safeStorage,
   );
   host.onConnection = connection => {
-    if (connection?.status === 'ACCEPTED') void startCapture(connection).catch(error => console.error('Host capture start failed', connection.id, error));
-    if (['CLOSED', 'REJECTED', 'EXPIRED'].includes(connection?.status)) stopCapture(connection.id);
+    if (connection?.status === 'ACCEPTED') { activeCaptures.set(connection.id, connection); void startCapture(connection).catch(error => console.error('Host capture start failed', connection.id, error)); }
+    if (['CLOSED', 'REJECTED', 'EXPIRED'].includes(connection?.status)) { activeCaptures.delete(connection.id); stopCapture(connection.id); }
+  };
+  host.onResolution = () => {
+    for (const connection of activeCaptures.values()) {
+      stopCapture(connection.id);
+      setTimeout(() => void startCapture(connection).catch(error => console.error('Host capture restart failed', connection.id, error)), 50);
+    }
   };
   host.onSignal = signal => { if (captureWindow && !captureWindow.isDestroyed()) captureWindow.webContents.send('capture:signal', signal); };
   ipcMain.on('capture:ready', event => { if (event.sender === captureWindow?.webContents) resolveCaptureReady?.(); });
   ipcMain.on('capture:signal', (event, signal) => { if (event.sender === captureWindow?.webContents && signal && typeof signal === 'object') void host.sendSignal(signal).catch(error => console.error('Host capture signal failed', error)); });
-  for (const operation of ["state", "register", "rename", "allow"]) {
+  for (const operation of ["state", "register", "rename", "allow", "resolution"]) {
     ipcMain.handle(`host:${operation}`, async (event, input) => {
       if (!trusted(event)) return { ok: false, code: "UNTRUSTED" };
       return host.run(operation, input);

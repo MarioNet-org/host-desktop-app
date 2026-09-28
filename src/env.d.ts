@@ -10,6 +10,7 @@ interface Window {
     registerHost(): Promise<HostResult>;
     renameHost(name: string): Promise<HostResult>;
     allowHost(allow: boolean): Promise<HostResult>;
+    setResolution(resolution: HostResolution): Promise<HostResult>;
     signin(input: { email: string; password: string }): Promise<LoginResult>;
     signup(input: { email: string; password: string }): Promise<SignupResult>;
     getSession(): Promise<LoginSession | null>;
@@ -20,7 +21,8 @@ interface Window {
     close(): void;
   };
 }
-type HostState = { name: string; nodeId: string | null; allowed: boolean; status: string; platform: string; addresses: string[] };
+type HostResolution = 'standard' | 'original' | 'saver' | 'low';
+type HostState = { name: string; nodeId: string | null; allowed: boolean; resolution: HostResolution; status: string; platform: string; addresses: string[] };
 type HostResult = { ok: true; host: HostState } | { ok: false; code: string };
 
 

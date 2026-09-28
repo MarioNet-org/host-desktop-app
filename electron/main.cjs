@@ -60,6 +60,10 @@ function createWindow() {
   window.webContents.on("will-attach-webview", (event) =>
     event.preventDefault(),
   );
+  window.once('closed', () => {
+    window = null;
+    if (!exiting) app.quit();
+  });
   window.once("ready-to-show", () => window.show());
   if (devUrl) void window.loadURL(devUrl);
   else void window.loadFile(entry);
@@ -167,7 +171,7 @@ void app.whenReady().then(async () => {
       window.isMaximized() ? window.unmaximize() : window.maximize();
   });
   ipcMain.on("window:close", (event) => {
-    if (trusted(event)) window.close();
+    if (trusted(event)) app.quit();
   });
   createWindow();
   app.on("activate", () => {

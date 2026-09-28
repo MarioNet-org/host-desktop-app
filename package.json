@@ -1,0 +1,73 @@
+{
+  "name": "@marionet/host",
+  "productName": "MarioNet Host",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MarioNet desktop host",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "engines": {
+    "node": ">=22.15.0"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run check && npm run build:renderer",
+    "package": "npm run build && electron-builder --win --x64 --publish never",
+    "package:portable": "npm run build && electron-builder --win portable --x64 --publish never",
+    "package:installer": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "start": "electron .",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "node --test test/*.test.cjs",
+    "test:desktop": "npm run build:renderer && node scripts/desktop-test.mjs",
+    "build:renderer": "vite build"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@sveltejs/vite-plugin-svelte": "5.1.1",
+    "@types/node": "^22.19.0",
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3",
+    "svelte": "^5.0.0",
+    "svelte-check": "^4.3.0",
+    "typescript": "^5.9.3",
+    "vite": "6.4.3"
+  },
+  "build": {
+    "appId": "com.marionet.host",
+    "productName": "MarioNet Host",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "build/icon.ico",
+      "package.json"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "icon": "build/icon.ico",
+      "signExecutable": false
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-Portable-${arch}.${ext}"
+    },
+    "nsis": {
+      "shortcutName": "MarioNet Host",
+      "runAfterFinish": false,
+      "uninstallerIcon": "build/icon.ico",
+      "installerIcon": "build/icon.ico",
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "${productName}-${version}-Setup-${arch}.${ext}",
+      "oneClick": false,
+      "perMachine": false
+    }
+  }
+}

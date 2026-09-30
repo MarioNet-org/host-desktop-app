@@ -6,10 +6,10 @@ const { createHash } = require('node:crypto');
 class HostService {
   constructor(auth, directory, storage) {
     this.auth = auth; this.directory = directory; this.storage = storage;
-    this.status = 'offline'; this.allowed = false; this.busy = false;
+    this.status = 'offline'; this.allowed = true; this.busy = false;
   }
   stop() {
-    this.allowed = false; this.status = 'offline';
+    this.status = 'offline';
     clearTimeout(this.retry); clearTimeout(this.deadline);
     const socket = this.socket; this.socket = null; socket?.close();
   }
@@ -30,6 +30,11 @@ class HostService {
       this.record = JSON.parse(this.storage.decryptString(await fs.readFile(this.file)));
       if (!/^[a-f0-9-]{36}$/.test(this.record.id) || !/^[a-f0-9]{64}$/.test(this.record.key)) throw new Error('STORAGE_ERROR');
       if (!['standard', 'original', 'saver', 'low'].includes(this.record.resolution)) this.record.resolution = 'standard';
+      if (typeof this.record.allowed !== 'boolean') {
+        this.record.allowed = true;
+        await this.save();
+      }
+      this.allowed = this.record.allowed;
     } catch (error) {
       if (error.code !== 'ENOENT') { this.userId = null; this.record = null; throw new Error('STORAGE_ERROR'); }
     }
@@ -38,6 +43,12 @@ class HostService {
     await fs.mkdir(this.directory, { recursive: true });
     await fs.writeFile(this.file + '.tmp', this.storage.encryptString(JSON.stringify(this.record)));
     await fs.rename(this.file + '.tmp', this.file);
+  }
+  async initialize() {
+    if (!this.auth.state()) return this.snapshot();
+    await this.load();
+    if (this.record?.allowed) void this.connect();
+    return this.snapshot();
   }
   snapshot() {
     return { name: this.record?.name || os.hostname(), nodeId: this.record?.id || null, allowed: this.allowed, resolution: this.record?.resolution || 'standard', status: this.status,
@@ -54,9 +65,11 @@ class HostService {
         if (!platform) throw new Error('UNSUPPORTED_PLATFORM');
         const result = await this.request('/nodes', 'POST', { name: os.hostname().slice(0, 80), platform });
         if (!result.node?.id || !/^[a-f0-9]{64}$/.test(result.nodeKey)) throw new Error('INVALID_RESPONSE');
-        this.record = { id: result.node.id, name: result.node.name, key: result.nodeKey, resolution: 'standard' };
+        this.record = { id: result.node.id, name: result.node.name, key: result.nodeKey, resolution: 'standard', allowed: true };
+        this.allowed = true;
         try { await this.save(); }
         catch { try { await this.request(`/nodes/${this.record.id}`, 'DELETE'); } catch {} this.record = null; throw new Error('STORAGE_ERROR'); }
+        void this.connect();
       } else if (operation === 'rename') {
         if (!this.record) throw new Error('NOT_REGISTERED');
         if (typeof input !== 'string' || !input.trim() || input.trim().length > 80) throw new Error('INVALID_NAME');
@@ -65,7 +78,7 @@ class HostService {
       } else if (operation === 'allow') {
         if (typeof input !== 'boolean') throw new Error('INVALID_INPUT');
         if (!this.record) throw new Error('NOT_REGISTERED');
-        this.stop(); this.allowed = input;
+        this.stop(); this.allowed = input; this.record.allowed = input; await this.save();
         if (input) this.connect();
       } else if (operation === 'resolution') {
         if (!this.record) throw new Error('NOT_REGISTERED');

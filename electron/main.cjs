@@ -112,7 +112,7 @@ void app.whenReady().then(async () => {
   } catch {
     dialog.showErrorBox(
       "MarioNet 설정 오류",
-      "서버 주소를 확인해주세요. MARIONET_SERVER_URL에는 HTTPS 주소 또는 로컬 HTTP 주소를 설정해야 합니다.",
+      "서버 주소를 확인해주세요. MARIONET_BE_URL에는 HTTPS 주소 또는 로컬 HTTP 주소를 설정해야 합니다.",
     );
     app.quit();
     return;
@@ -144,6 +144,11 @@ void app.whenReady().then(async () => {
     path.join(app.getPath("userData"), "hosts"),
     require("electron").safeStorage,
   );
+  try {
+    await host.initialize();
+  } catch (error) {
+    console.error('Host settings could not be restored', error);
+  }
   host.onConnection = connection => {
     if (connection?.status === 'ACCEPTED') { activeCaptures.set(connection.id, connection); void startCapture(connection).catch(error => console.error('Host capture start failed', connection.id, error)); }
     if (['CLOSED', 'REJECTED', 'EXPIRED'].includes(connection?.status)) { activeCaptures.delete(connection.id); stopCapture(connection.id); }

@@ -13,7 +13,7 @@ function apiUrl(value = "http://127.0.0.1:4000") {
     url.pathname !== "/"
   ) {
     throw new Error(
-      "MARIONET_SERVER_URL must be an HTTPS origin (HTTP is allowed only on loopback).",
+      "MARIONET_BE_URL must be an HTTPS origin (HTTP is allowed only on loopback).",
     );
   }
   return url.origin;
@@ -26,7 +26,7 @@ function loadApiUrl(path) {
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
-  return apiUrl(process.env.MARIONET_SERVER_URL || env.MARIONET_SERVER_URL);
+  return apiUrl(process.env.MARIONET_BE_URL || env.MARIONET_BE_URL);
 }
 
 class AuthClient {

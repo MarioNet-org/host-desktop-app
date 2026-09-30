@@ -38,7 +38,7 @@ try {
   realtime.attach(server);
   const env = {
     ...process.env,
-    MARIONET_SERVER_URL: `http://127.0.0.1:${server.address().port}`,
+    MARIONET_BE_URL: `http://127.0.0.1:${server.address().port}`,
   };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.MARIONET_DEV_URL;

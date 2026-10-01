@@ -42,6 +42,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      ".env",
       "build/icon.ico",
       "package.json"
     ],

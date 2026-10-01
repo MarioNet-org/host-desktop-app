@@ -1,7 +1,8 @@
 const { readFileSync } = require("node:fs");
 const { parseEnv } = require("node:util");
 
-function apiUrl(value = "http://127.0.0.1:4000") {
+function apiUrl(value) {
+  if (typeof value !== "string" || !value.trim()) throw new Error("MARIONET_BE_URL is required.");
   const url = new URL(value);
   const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   if (

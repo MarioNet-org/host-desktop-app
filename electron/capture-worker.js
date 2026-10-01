@@ -15,20 +15,28 @@
   const cropStream = async (sourceStream, resolution) => {
     const profile = profiles[resolution] ?? profiles.standard;
     if (resolution === 'original') return { outputStream: sourceStream, stopRender: null, profile };
-    const { width, height } = profile;
     const video = document.createElement('video'); video.muted = true; video.srcObject = sourceStream; await video.play();
+    const sourceWidth = video.videoWidth; const sourceHeight = video.videoHeight;
+    const sourceRatio = sourceWidth / sourceHeight;
+    // Avoid a second encode and resize when the captured display is already
+    // the requested 16:9 size. This keeps UI text sharper on 1080p screens.
+    if (Math.abs(sourceRatio - (16 / 9)) < 0.005 && sourceWidth <= profile.width && sourceHeight <= profile.height) {
+      video.srcObject = null;
+      return { outputStream: sourceStream, stopRender: null, profile };
+    }
+    const { width, height } = profile;
     const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
     const context = canvas.getContext('2d', { alpha: false });
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = 'high';
     let frame;
     const render = () => {
-      const sourceWidth = video.videoWidth || width; const sourceHeight = video.videoHeight || height;
-      const sourceRatio = sourceWidth / sourceHeight; const targetRatio = width / height;
-      let sx = 0; let sy = 0; let sw = sourceWidth; let sh = sourceHeight;
-      if (sourceRatio > targetRatio) { sw = Math.round(sourceHeight * targetRatio); sx = Math.round((sourceWidth - sw) / 2); }
-      else if (sourceRatio < targetRatio) { sh = Math.round(sourceWidth / targetRatio); sy = Math.round((sourceHeight - sh) / 2); }
-      context.drawImage(video, sx, sy, sw, sh, 0, 0, width, height); frame = requestAnimationFrame(render);
+      const currentWidth = video.videoWidth || width; const currentHeight = video.videoHeight || height;
+      const scale = Math.min(width / currentWidth, height / currentHeight);
+      const drawWidth = Math.round(currentWidth * scale); const drawHeight = Math.round(currentHeight * scale);
+      const drawX = Math.round((width - drawWidth) / 2); const drawY = Math.round((height - drawHeight) / 2);
+      context.fillStyle = '#000'; context.fillRect(0, 0, width, height);
+      context.drawImage(video, 0, 0, currentWidth, currentHeight, drawX, drawY, drawWidth, drawHeight); frame = requestAnimationFrame(render);
     };
     render(); return { outputStream: canvas.captureStream(profile.frameRate), stopRender: () => { cancelAnimationFrame(frame); video.srcObject = null; }, profile };
   };
@@ -38,24 +46,28 @@
       console.info('Capture worker starting', connection.id);
       const sourceStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: sourceConstraints(sourceId) });
       console.info('Capture worker stream ready', connection.id);
+      sourceStream.getVideoTracks()[0].contentHint = 'detail';
       const { outputStream, stopRender, profile } = await cropStream(sourceStream, resolution);
+      outputStream.getVideoTracks()[0].contentHint = 'detail';
       const peer = new RTCPeerConnection();
       const session = { peer, sourceStream, outputStream, stopRender, pendingIce: [] }; sessions.set(connection.id, session);
-      const sender = peer.addTrack(outputStream.getVideoTracks()[0], outputStream);
-      try {
+      const configureSender = async sender => {
         const parameters = sender.getParameters();
         parameters.encodings = parameters.encodings?.length ? parameters.encodings : [{}];
         parameters.encodings[0].maxBitrate = profile.maxBitrate;
         parameters.encodings[0].maxFramerate = profile.frameRate;
+        parameters.degradationPreference = 'maintain-resolution';
         await sender.setParameters(parameters);
-        console.info('Capture worker encoding configured', connection.id, `${profile.maxBitrate / 1_000_000} Mbps`);
-      } catch (error) {
-        console.warn('Capture worker could not apply encoding limits', connection.id, error);
-      }
+      };
+      const sender = peer.addTrack(outputStream.getVideoTracks()[0], outputStream);
+      try { await configureSender(sender); console.info('Capture worker encoding configured', connection.id, `${profile.maxBitrate / 1_000_000} Mbps`); }
+      catch (error) { console.warn('Capture worker could not apply encoding limits', connection.id, error); }
       sourceStream.getVideoTracks().forEach(track => { track.onended = () => stop(connection.id); });
       peer.onicecandidate = event => { if (event.candidate) send(connection.id, 'ice', event.candidate.toJSON()); };
       peer.onconnectionstatechange = () => { if (['failed', 'closed', 'disconnected'].includes(peer.connectionState)) stop(connection.id); };
-      const offer = await peer.createOffer(); await peer.setLocalDescription(offer); console.info('Capture worker sending offer', connection.id); send(connection.id, 'offer', offer);
+      const offer = await peer.createOffer(); await peer.setLocalDescription(offer);
+      try { await configureSender(sender); } catch (error) { console.warn('Capture worker could not retain encoding limits', connection.id, error); }
+      console.info('Capture worker sending offer', connection.id); send(connection.id, 'offer', offer);
     } catch (error) { console.error('Capture worker failed', connection?.id, error); stop(connection?.id); }
   };
   window.marioNetCapture.onStart(start);
